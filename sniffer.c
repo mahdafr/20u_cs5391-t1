@@ -42,7 +42,8 @@ int main() {
 		fprintf(stderr, "Can't open device %s: %s\n", device, errbuff);
 		return 2;
 	}
-	pcap_set_rfmon(handle,0);		// monitor mode enabled if 1
+	if ( pcap_can_set_rfmon(handle) )
+		pcap_set_rfmon(handle,0);	// monitor mode enabled if non-zero
 	pcap_set_promisc(handle, 1);		// promiscuous mode is on if non-zero
 	pcap_set_snaplen(handle, BUFSIZ);
 	pcap_set_timeout(handle, 10000);	// 10s
@@ -58,7 +59,7 @@ int main() {
 	
 	// setting filters: (1) ICMP packets b/w 2 specific hosts and (2) TCP packets with d_port from 10-100
 	struct bpf_program filter;
-	char f_expr[] = "\(\(src host 192.168.56.103 and dst host 192.168.56.102) or \(src host 192.168.56.102 and dst host 192.168.56.103)) or \(tcp dst portrange 10-100)";
+	char f_expr[] = "\(icmp and \(host 192.168.56.102 and host 192.168.56.103)) or \(tcp dst portrange 10-100)"; //and 
 	bpf_u_int32 ip;
 	if ( pcap_compile(handle, &filter, f_expr, 0, ip) == -1 ) {
 		fprintf(stderr, "Bad filter: %s\n", pcap_geterr(handle));
@@ -88,39 +89,37 @@ void inf_pcap_handler(u_char* args, const struct pcap_pkthdr* p_hdr, const u_cha
 	print_info(p_hdr);
 	
 	const struct sniff_ethernet* e = (struct sniff_ethernet*)(p);
-	//printf("TYPE=%hu\t", e->ether_type);
-	
-	//if IP packet
 	const struct sniff_ip* ip = (struct sniff_ip*)(p + sizeof(struct sniff_ethernet));
-	//printf("PROTO=%d\t", ip->ip_p);
+
+	// print IP data
 	u_int s_ip = sizeof(struct sniff_ip);
 	if ( s_ip>0 && s_ip < 20) {
 		printf("Invalid IP header length: %u bytes\t", s_ip);
 		return;
 	}
-	
-	// if TCP packet
-	const struct sniff_tcp* tcp = (struct sniff_tcp*)(p + sizeof(struct sniff_ethernet) + s_ip);
-	u_int s_tcp = sizeof(struct sniff_tcp);
-	
-	// if it is IP and not TCP
-	//if ( s_ip!=0 && s_tcp==0 )
 	char src[100];
 	strcpy(src,inet_ntoa(ip->ip_src));
 	char dst[100];
 	strcpy(dst,inet_ntoa(ip->ip_dst));
 	printf("IP src/dst: %s/%s\t",src,dst);
 	
-	// otherwise, print out the TCP data
+	// if TCP packet
+	const struct sniff_tcp* tcp = (struct sniff_tcp*)(p + sizeof(struct sniff_ethernet) + s_ip);
+	u_int s_tcp = sizeof(struct sniff_tcp);
+	
+	// print TCP data
 	if ( s_tcp>0 && s_tcp < 20) {
 		printf("Invalid TCP header length: %u bytes\t", s_tcp);
 		return;
 	}
-	//if ( s_tcp!=0 )
-	printf("TCP src/dst: %d/%d\t %d/%d\t",ntohs(tcp->th_sport),ntohs(tcp->th_dport),tcp->th_sport,tcp->th_dport);
+	printf("TCP src/dst: %d/%d\n",ntohs(tcp->th_sport),ntohs(tcp->th_dport));
 	
-	// payload
-	const char* payload = (u_char *)(p + sizeof(struct sniff_ethernet) + s_ip + s_tcp);
-	printf("\n\n");//Payload: %s\n\n", payload);
+	// print the payload
+	printf("Payload contents: ");
+	u_int p_size = ntohs(ip->ip_len) - (s_ip + s_off(tcp));
+	const char* payload = (u_char *)(p + sizeof(struct sniff_ethernet) + s_ip + s_off(tcp));
+	for ( int i=0 ; i<p_size ; i++ )
+		printf("%c",payload[i]);
+	printf("\n\n");
 }
 

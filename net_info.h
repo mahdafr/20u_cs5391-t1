@@ -1,7 +1,6 @@
 #include <pcap.h>
 #include <netinet/in.h>
 #include <net/ethernet.h>
-
 // Structs from: http://www.tcpdump.org/sniffex.c
 
 /* Ethernet header */
@@ -9,6 +8,7 @@ struct sniff_ethernet {
 	u_char ether_dhost[ETHER_ADDR_LEN]; /* Destination host address */
 	u_char ether_shost[ETHER_ADDR_LEN]; /* Source host address */
 	u_short ether_type; /* IP? ARP? RARP? etc */
+	u_short temp; /* IP? ARP? RARP? etc */
 };
 
 /* IP header */
@@ -28,6 +28,7 @@ struct sniff_ip {
 	struct in_addr ip_src,ip_dst; /* source and dest address */
 };
 #define h_len(ip)		(((ip)->ip_vhl) & 0x0f)
+#define ip_len(ip)		((ip)->ip_len)
 #define h_vers(ip)		(((ip)->ip_vhl) >> 4)
 
 /* TCP header */
@@ -39,7 +40,7 @@ struct sniff_tcp {
 	tcp_seq th_seq;	/* sequence number */
 	tcp_seq th_ack;	/* acknowledgement number */
 	u_char th_offx2;	/* data offset, rsvd */
-#define s_off(th)	(((th)->th_offx2 & 0xf0) >> 4)
+#define s_off(th)	((((th)->th_offx2 & 0xf0) >> 4)*4)
 	u_char th_flags;
 #define TH_FIN 0x01
 #define TH_SYN 0x02
